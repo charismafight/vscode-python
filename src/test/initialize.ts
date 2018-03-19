@@ -1,24 +1,22 @@
+// tslint:disable:no-string-literal
+
 import * as fs from 'fs';
 import * as path from 'path';
 import * as vscode from 'vscode';
 import { PythonSettings } from '../client/common/configSettings';
 import { activated } from '../client/extension';
-import { StopWatch } from '../client/telemetry/stopWatch';
 import { clearPythonPathInWorkspaceFolder, resetGlobalPythonPathSetting, setPythonPathInWorkspaceRoot } from './common';
+
+export * from './constants';
 
 const dummyPythonFile = path.join(__dirname, '..', '..', 'src', 'test', 'pythonFiles', 'dummy.py');
 const multirootPath = path.join(__dirname, '..', '..', 'src', 'testMultiRootWkspc');
 const workspace3Uri = vscode.Uri.file(path.join(multirootPath, 'workspace3'));
 
 //First thing to be executed.
-// tslint:disable-next-line:no-string-literal
 process.env['VSC_PYTHON_CI_TEST'] = '1';
 
 const PYTHON_PATH = getPythonPath();
-// tslint:disable-next-line:no-string-literal prefer-template
-export const IS_TRAVIS = (process.env['TRAVIS'] + '') === 'true';
-export const TEST_TIMEOUT = 25000;
-export const IS_MULTI_ROOT_TEST = isMultitrootTest();
 
 // Ability to use custom python environments for testing
 export async function initializePython() {
@@ -45,13 +43,6 @@ export async function initializeTest(): Promise<any> {
     PythonSettings.dispose();
 }
 
-export async function wait(timeoutMilliseconds: number) {
-    return new Promise(resolve => {
-        // tslint:disable-next-line:no-string-based-set-timeout
-        setTimeout(resolve, timeoutMilliseconds);
-    });
-}
-
 export async function closeActiveWindows(): Promise<void> {
     return new Promise<void>((resolve, reject) => vscode.commands.executeCommand('workbench.action.closeAllEditors')
         // tslint:disable-next-line:no-unnecessary-callback-wrapper
@@ -65,8 +56,4 @@ function getPythonPath(): string {
         return process.env.TRAVIS_PYTHON_PATH;
     }
     return 'python';
-}
-
-function isMultitrootTest() {
-    return Array.isArray(vscode.workspace.workspaceFolders) && vscode.workspace.workspaceFolders.length > 1;
 }

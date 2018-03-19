@@ -9,7 +9,7 @@ import { IFileSystem, IPlatformService } from './types';
 
 @injectable()
 export class FileSystem implements IFileSystem {
-    constructor( @inject(IPlatformService) private platformService: IPlatformService) { }
+    constructor(@inject(IPlatformService) private platformService: IPlatformService) { }
 
     public get directorySeparatorChar(): string {
         return path.sep;
@@ -28,6 +28,9 @@ export class FileSystem implements IFileSystem {
 
     public fileExistsAsync(filePath: string): Promise<boolean> {
         return this.objectExistsAsync(filePath, (stats) => stats.isFile());
+    }
+    public fileExistsSync(filePath: string): boolean {
+        return fs.existsSync(filePath);
     }
     /**
      * Reads the contents of the file using utf8 and returns the string contents.
@@ -76,5 +79,21 @@ export class FileSystem implements IFileSystem {
         } else {
             return path1 === path2;
         }
+    }
+
+    public appendFileSync(filename: string, data: {}, encoding: string): void;
+    public appendFileSync(filename: string, data: {}, options?: { encoding?: string; mode?: number; flag?: string }): void;
+    // tslint:disable-next-line:unified-signatures
+    public appendFileSync(filename: string, data: {}, options?: { encoding?: string; mode?: string; flag?: string }): void;
+    public appendFileSync(filename: string, data: {}, optionsOrEncoding: {}): void {
+        return fs.appendFileSync(filename, data, optionsOrEncoding);
+    }
+
+    public getRealPathAsync(filePath: string): Promise<string> {
+        return new Promise<string>(resolve => {
+            fs.realpath(filePath, (err, realPath) => {
+                resolve(err ? filePath : realPath);
+            });
+        });
     }
 }

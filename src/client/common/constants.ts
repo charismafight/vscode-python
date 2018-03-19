@@ -1,4 +1,4 @@
-
+import * as path from 'path';
 export const PythonLanguage = { language: 'python' };
 
 export namespace Commands {
@@ -28,8 +28,10 @@ export namespace Commands {
     export const Update_SparkLibrary = 'python.updateSparkLibrary';
     export const Build_Workspace_Symbols = 'python.buildWorkspaceSymbols';
     export const Start_REPL = 'python.startREPL';
+    export const Create_Terminal = 'python.createTerminal';
     export const Set_Linter = 'python.setLinter';
     export const Enable_Linter = 'python.enableLinting';
+    export const Run_Linter = 'python.runLinting';
 }
 export namespace Octicons {
     export const Test_Pass = '$(check)';
@@ -62,3 +64,10 @@ export namespace LinterErrors {
 }
 
 export const STANDARD_OUTPUT_CHANNEL = 'STANDARD_OUTPUT_CHANNEL';
+
+export function isTestExecution(): boolean {
+    // tslint:disable-next-line:interface-name no-string-literal
+    return process.env['VSC_PYTHON_CI_TEST'] === '1';
+}
+
+export const EXTENSION_ROOT_DIR = path.join(__dirname, '..', '..', '..');

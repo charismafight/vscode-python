@@ -2,12 +2,15 @@
 // Licensed under the MIT License.
 
 import { Container } from 'inversify';
-import { Disposable, Memento, OutputChannel, Uri } from 'vscode';
+import { Disposable, Memento, OutputChannel } from 'vscode';
 import { STANDARD_OUTPUT_CHANNEL } from '../client/common/constants';
 import { Logger } from '../client/common/logger';
 import { IS_64_BIT, IS_WINDOWS } from '../client/common/platform/constants';
+import { FileSystem } from '../client/common/platform/fileSystem';
 import { PathUtils } from '../client/common/platform/pathUtils';
+import { PlatformService } from '../client/common/platform/platformService';
 import { registerTypes as platformRegisterTypes } from '../client/common/platform/serviceRegistry';
+import { IFileSystem, IPlatformService } from '../client/common/platform/types';
 import { BufferDecoder } from '../client/common/process/decoder';
 import { ProcessService } from '../client/common/process/proc';
 import { PythonExecutionFactory } from '../client/common/process/pythonExecutionFactory';
@@ -53,17 +56,19 @@ export class IocContainer {
         this.disposables.push(testOutputChannel);
         this.serviceManager.addSingletonInstance<OutputChannel>(IOutputChannel, testOutputChannel, TEST_OUTPUT_CHANNEL);
     }
-    public async getPythonVersion(resource?: string | Uri): Promise<string> {
-        const factory = this.serviceContainer.get<IPythonExecutionFactory>(IPythonExecutionFactory);
-        const resourceToUse = (typeof resource === 'string') ? Uri.file(resource as string) : (resource as Uri);
-        return factory.create(resourceToUse).then(pythonProc => pythonProc.getVersion());
-    }
     public dispose() {
         this.disposables.forEach(disposable => disposable.dispose());
     }
 
-    public registerCommonTypes() {
+    public registerCommonTypes(registerFileSystem: boolean = true) {
         commonRegisterTypes(this.serviceManager);
+        if (registerFileSystem) {
+            this.registerFileSystemTypes();
+        }
+    }
+    public registerFileSystemTypes() {
+        this.serviceManager.addSingleton<IPlatformService>(IPlatformService, PlatformService);
+        this.serviceManager.addSingleton<IFileSystem>(IFileSystem, FileSystem);
     }
     public registerProcessTypes() {
         processRegisterTypes(this.serviceManager);

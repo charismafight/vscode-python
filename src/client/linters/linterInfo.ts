@@ -9,10 +9,12 @@ import { ILinterInfo, LinterId } from './types';
 export class LinterInfo implements ILinterInfo {
     private _id: LinterId;
     private _product: Product;
+    private _configFileNames: string[];
 
-    constructor(product: Product, id: LinterId, private configService: IConfigurationService) {
+    constructor(product: Product, id: LinterId, private configService: IConfigurationService, configFileNames: string[] = []) {
         this._product = product;
         this._id = id;
+        this._configFileNames = configFileNames;
     }
 
     public get id(): LinterId {
@@ -30,6 +32,9 @@ export class LinterInfo implements ILinterInfo {
     }
     public get enabledSettingName(): string {
         return `${this.id}Enabled`;
+    }
+    public get configFileNames(): string[] {
+        return this._configFileNames;
     }
 
     public async enableAsync(enabled: boolean, resource?: Uri): Promise<void> {
@@ -55,7 +60,6 @@ export class LinterInfo implements ILinterInfo {
         let moduleName: string | undefined;
 
         // If path information is not available, then treat it as a module,
-        // Except for prospector as that needs to be run as an executable (its a python package).
         if (path.basename(execPath) === execPath) {
             moduleName = execPath;
         }

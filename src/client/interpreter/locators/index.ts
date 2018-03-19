@@ -1,59 +1,49 @@
 import { inject, injectable } from 'inversify';
 import * as _ from 'lodash';
 import * as path from 'path';
-import { Disposable, Uri, workspace } from 'vscode';
+import { Disposable, Uri } from 'vscode';
 import { IPlatformService } from '../../common/platform/types';
-import { IDisposableRegistry, IsWindows } from '../../common/types';
+import { IDisposableRegistry } from '../../common/types';
 import { arePathsSame } from '../../common/utils';
 import { IServiceContainer } from '../../ioc/types';
 import {
     CONDA_ENV_FILE_SERVICE,
     CONDA_ENV_SERVICE,
     CURRENT_PATH_SERVICE,
+    GLOBAL_VIRTUAL_ENV_SERVICE,
     IInterpreterLocatorService,
     InterpreterType,
     KNOWN_PATH_SERVICE,
+    PIPENV_SERVICE,
     PythonInterpreter,
-    VIRTUAL_ENV_SERVICE,
-    WINDOWS_REGISTRY_SERVICE
+    WINDOWS_REGISTRY_SERVICE,
+    WORKSPACE_VIRTUAL_ENV_SERVICE
 } from '../contracts';
-import { fixInterpreterDisplayName } from './helpers';
+import { fixInterpreterDisplayName, isMacDefaultPythonPath } from './helpers';
 
 @injectable()
 export class PythonInterpreterLocatorService implements IInterpreterLocatorService {
-    private interpretersPerResource: Map<string, Promise<PythonInterpreter[]>>;
     private disposables: Disposable[] = [];
     private platform: IPlatformService;
 
-    constructor( @inject(IServiceContainer) private serviceContainer: IServiceContainer) {
-        this.interpretersPerResource = new Map<string, Promise<PythonInterpreter[]>>();
-        this.disposables.push(workspace.onDidChangeConfiguration(this.onConfigChanged, this));
+    constructor(@inject(IServiceContainer) private serviceContainer: IServiceContainer) {
         serviceContainer.get<Disposable[]>(IDisposableRegistry).push(this);
         this.platform = serviceContainer.get<IPlatformService>(IPlatformService);
     }
-    public async getInterpreters(resource?: Uri) {
-        const resourceKey = this.getResourceKey(resource);
-        if (!this.interpretersPerResource.has(resourceKey)) {
-            this.interpretersPerResource.set(resourceKey, this.getInterpretersPerResource(resource));
+    public async getInterpreters(resource?: Uri): Promise<PythonInterpreter[]> {
+        // Pipenv always wins
+        const pipenv = this.serviceContainer.get<IInterpreterLocatorService>(IInterpreterLocatorService, PIPENV_SERVICE);
+        const interpreters = await pipenv.getInterpreters(resource);
+        if (interpreters.length > 0) {
+            return interpreters;
         }
-
-        return await this.interpretersPerResource.get(resourceKey)!;
+        return this.getInterpretersPerResource(resource);
     }
     public dispose() {
         this.disposables.forEach(disposable => disposable.dispose());
     }
-    private onConfigChanged() {
-        this.interpretersPerResource.clear();
-    }
-    private getResourceKey(resource?: Uri) {
-        if (!resource) {
-            return '';
-        }
-        const workspaceFolder = workspace.getWorkspaceFolder(resource);
-        return workspaceFolder ? workspaceFolder.uri.fsPath : '';
-    }
-    private async getInterpretersPerResource(resource?: Uri) {
-        const locators = this.getLocators(resource);
+    private async getInterpretersPerResource(resource?: Uri): Promise<PythonInterpreter[]> {
+        const locators = this.getLocators();
         const promises = locators.map(async provider => provider.getInterpreters(resource));
         const listOfInterpreters = await Promise.all(promises);
 
@@ -62,7 +52,7 @@ export class PythonInterpreterLocatorService implements IInterpreterLocatorServi
             .map(fixInterpreterDisplayName)
             .map(item => { item.path = path.normalize(item.path); return item; })
             .reduce<PythonInterpreter[]>((accumulator, current) => {
-                if (this.platform.isMac && current.path === '/usr/bin/python') {
+                if (this.platform.isMac && isMacDefaultPythonPath(current.path)) {
                     return accumulator;
                 }
                 const existingItem = accumulator.find(item => arePathsSame(item.path, current.path));
@@ -77,7 +67,7 @@ export class PythonInterpreterLocatorService implements IInterpreterLocatorServi
                 return accumulator;
             }, []);
     }
-    private getLocators(resource?: Uri) {
+    private getLocators(): IInterpreterLocatorService[] {
         const locators: IInterpreterLocatorService[] = [];
         // The order of the services is important.
         if (this.platform.isWindows) {
@@ -85,7 +75,8 @@ export class PythonInterpreterLocatorService implements IInterpreterLocatorServi
         }
         locators.push(this.serviceContainer.get<IInterpreterLocatorService>(IInterpreterLocatorService, CONDA_ENV_SERVICE));
         locators.push(this.serviceContainer.get<IInterpreterLocatorService>(IInterpreterLocatorService, CONDA_ENV_FILE_SERVICE));
-        locators.push(this.serviceContainer.get<IInterpreterLocatorService>(IInterpreterLocatorService, VIRTUAL_ENV_SERVICE));
+        locators.push(this.serviceContainer.get<IInterpreterLocatorService>(IInterpreterLocatorService, GLOBAL_VIRTUAL_ENV_SERVICE));
+        locators.push(this.serviceContainer.get<IInterpreterLocatorService>(IInterpreterLocatorService, WORKSPACE_VIRTUAL_ENV_SERVICE));
 
         if (!this.platform.isWindows) {
             locators.push(this.serviceContainer.get<IInterpreterLocatorService>(IInterpreterLocatorService, KNOWN_PATH_SERVICE));

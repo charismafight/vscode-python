@@ -7,18 +7,19 @@ import { PythonInterpreter } from '../../interpreter/contracts';
 
 export enum TerminalShellType {
     powershell = 1,
-    commandPrompt = 2,
-    bash = 3,
-    fish = 4,
-    cshell = 5,
-    other = 6
+    powershellCore = 2,
+    commandPrompt = 3,
+    bash = 4,
+    fish = 5,
+    cshell = 6,
+    other = 7
 }
 
 export interface ITerminalService {
     readonly onDidCloseTerminal: Event<void>;
     sendCommand(command: string, args: string[]): Promise<void>;
     sendText(text: string): Promise<void>;
-    show(): void;
+    show(): Promise<void>;
 }
 
 export const ITerminalServiceFactory = Symbol('ITerminalServiceFactory');
@@ -33,6 +34,7 @@ export interface ITerminalServiceFactory {
      * @memberof ITerminalServiceFactory
      */
     getTerminalService(resource?: Uri, title?: string): ITerminalService;
+    createTerminalService(resource?: Uri, title?: string): ITerminalService;
 }
 
 export const ITerminalHelper = Symbol('ITerminalHelper');
@@ -49,5 +51,5 @@ export const ITerminalActivationCommandProvider = Symbol('ITerminalActivationCom
 
 export interface ITerminalActivationCommandProvider {
     isShellSupported(targetShell: TerminalShellType): boolean;
-    getActivationCommands(interpreter: PythonInterpreter, targetShell: TerminalShellType): Promise<string[] | undefined>;
+    getActivationCommands(resource: Uri | undefined, targetShell: TerminalShellType): Promise<string[] | undefined>;
 }

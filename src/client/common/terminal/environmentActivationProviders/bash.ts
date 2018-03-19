@@ -2,7 +2,7 @@
 // Licensed under the MIT License.
 
 import { inject, injectable } from 'inversify';
-import { PythonInterpreter } from '../../../interpreter/contracts';
+import { Uri } from 'vscode';
 import { IServiceContainer } from '../../../ioc/types';
 import '../../extensions';
 import { TerminalShellType } from '../types';
@@ -18,15 +18,12 @@ export class Bash extends BaseActivationCommandProvider {
             targetShell === TerminalShellType.cshell ||
             targetShell === TerminalShellType.fish;
     }
-    public async getActivationCommands(interpreter: PythonInterpreter, targetShell: TerminalShellType): Promise<string[] | undefined> {
-        const scriptFile = await this.findScriptFile(interpreter, this.getScriptsInOrderOfPreference(targetShell));
+    public async getActivationCommands(resource: Uri | undefined, targetShell: TerminalShellType): Promise<string[] | undefined> {
+        const scriptFile = await this.findScriptFile(resource, this.getScriptsInOrderOfPreference(targetShell));
         if (!scriptFile) {
             return;
         }
-        const envName = interpreter.envName ? interpreter.envName! : '';
-        // In the case of conda environments, the name of the environment must be provided.
-        // E.g. `source acrtivate <envname>`.
-        return [`source ${scriptFile.toCommandArgument()} ${envName}`.trim()];
+        return [`source ${scriptFile.fileToCommandArgument()}`];
     }
 
     private getScriptsInOrderOfPreference(targetShell: TerminalShellType): string[] {

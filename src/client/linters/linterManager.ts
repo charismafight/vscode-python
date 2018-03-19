@@ -30,13 +30,12 @@ export class LinterManager implements ILinterManager {
     private lintingEnabledSettingName = 'enabled';
     private linters: ILinterInfo[];
     private configService: IConfigurationService;
-    private disabledForCurrentSession = false;
 
-    constructor( @inject(IServiceContainer) serviceContainer: IServiceContainer) {
+    constructor(@inject(IServiceContainer) serviceContainer: IServiceContainer) {
         this.configService = serviceContainer.get<IConfigurationService>(IConfigurationService);
         this.linters = [
             new LinterInfo(Product.flake8, 'flake8', this.configService),
-            new LinterInfo(Product.pylint, 'pylint', this.configService),
+            new LinterInfo(Product.pylint, 'pylint', this.configService, ['.pylintrc', 'pylintrc']),
             new LinterInfo(Product.mypy, 'mypy', this.configService),
             new LinterInfo(Product.pep8, 'pep8', this.configService),
             new LinterInfo(Product.prospector, 'prospector', this.configService),
@@ -58,28 +57,17 @@ export class LinterManager implements ILinterManager {
     }
 
     public isLintingEnabled(resource?: Uri): boolean {
-        if (this.disabledForCurrentSession) {
-            return false;
-        }
         const settings = this.configService.getSettings(resource);
         return (settings.linting[this.lintingEnabledSettingName] as boolean) && this.getActiveLinters(resource).length > 0;
     }
 
     public async enableLintingAsync(enable: boolean, resource?: Uri): Promise<void> {
-        if (enable) {
-            this.disabledForCurrentSession = false;
-        }
-
         await this.configService.updateSettingAsync(`linting.${this.lintingEnabledSettingName}`, enable, resource);
 
         // If nothing is enabled, fix it up to PyLint (default).
         if (enable && this.getActiveLinters(resource).length === 0) {
             await this.setActiveLintersAsync([Product.pylint], resource);
         }
-    }
-
-    public disableSessionLinting(): void {
-        this.disabledForCurrentSession = true;
     }
 
     public getActiveLinters(resource?: Uri): ILinterInfo[] {

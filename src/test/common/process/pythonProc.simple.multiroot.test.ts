@@ -10,7 +10,10 @@ import * as path from 'path';
 import { ConfigurationTarget, Disposable, Uri } from 'vscode';
 import { PythonSettings } from '../../../client/common/configSettings';
 import { ConfigurationService } from '../../../client/common/configuration/service';
+import { FileSystem } from '../../../client/common/platform/fileSystem';
 import { PathUtils } from '../../../client/common/platform/pathUtils';
+import { PlatformService } from '../../../client/common/platform/platformService';
+import { IFileSystem, IPlatformService } from '../../../client/common/platform/types';
 import { CurrentProcess } from '../../../client/common/process/currentProcess';
 import { registerTypes as processRegisterTypes } from '../../../client/common/process/serviceRegistry';
 import { IPythonExecutionFactory, StdErrError } from '../../../client/common/process/types';
@@ -57,6 +60,8 @@ suite('PythonExecutableService', () => {
         serviceManager.addSingleton<IPathUtils>(IPathUtils, PathUtils);
         serviceManager.addSingleton<ICurrentProcess>(ICurrentProcess, CurrentProcess);
         serviceManager.addSingleton<IConfigurationService>(IConfigurationService, ConfigurationService);
+        serviceManager.addSingleton<IPlatformService>(IPlatformService, PlatformService);
+        serviceManager.addSingleton<IFileSystem>(IFileSystem, FileSystem);
 
         processRegisterTypes(serviceManager);
         variablesRegisterTypes(serviceManager);
@@ -106,19 +111,6 @@ suite('PythonExecutableService', () => {
         const randomModuleName = `xyz123${new Date().getSeconds()}`;
         const randomModuleIsInstalled = pythonExecService.isModuleInstalled(randomModuleName);
         await expect(randomModuleIsInstalled).to.eventually.equal(false, `Random module '${randomModuleName}' is installed`);
-    });
-
-    test('Value for \'python --version\' should be returned as version information', async () => {
-        const pythonPath = PythonSettings.getInstance(workspace4Path).pythonPath;
-        const expectedVersion = await new Promise<string>(resolve => {
-            execFile(pythonPath, ['--version'], (error, stdout, stdErr) => {
-                const out = (typeof stdErr === 'string' ? stdErr : '') + EOL + (typeof stdout === 'string' ? stdout : '');
-                resolve(out.trim());
-            });
-        });
-        const pythonExecService = await pythonExecFactory.create(workspace4PyFile);
-        const version = await pythonExecService.getVersion();
-        expect(version).to.equal(expectedVersion, 'Versions are not the same');
     });
 
     test('Ensure correct path to executable is returned', async () => {

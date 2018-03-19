@@ -2,7 +2,9 @@ import * as fs from 'fs-extra';
 import * as path from 'path';
 import * as vscode from 'vscode';
 import { OutputChannel, TextEdit, Uri } from 'vscode';
+import { IWorkspaceService } from '../common/application/types';
 import { STANDARD_OUTPUT_CHANNEL } from '../common/constants';
+import '../common/extensions';
 import { isNotInstalledError } from '../common/helpers';
 import { IPythonToolExecutionService } from '../common/process/types';
 import { IInstaller, IOutputChannel, Product } from '../common/types';
@@ -12,10 +14,13 @@ import { IFormatterHelper } from './types';
 
 export abstract class BaseFormatter {
     protected readonly outputChannel: OutputChannel;
+    protected readonly workspace: IWorkspaceService;
     private readonly helper: IFormatterHelper;
-    constructor(public Id: string, private product: Product, private serviceContainer: IServiceContainer) {
-        this.outputChannel = this.serviceContainer.get<OutputChannel>(IOutputChannel, STANDARD_OUTPUT_CHANNEL);
-        this.helper = this.serviceContainer.get<IFormatterHelper>(IFormatterHelper);
+
+    constructor(public Id: string, private product: Product, protected serviceContainer: IServiceContainer) {
+        this.outputChannel = serviceContainer.get<OutputChannel>(IOutputChannel, STANDARD_OUTPUT_CHANNEL);
+        this.helper = serviceContainer.get<IFormatterHelper>(IFormatterHelper);
+        this.workspace = serviceContainer.get<IWorkspaceService>(IWorkspaceService);
     }
 
     public abstract formatDocument(document: vscode.TextDocument, options: vscode.FormattingOptions, token: vscode.CancellationToken, range?: vscode.Range): Thenable<vscode.TextEdit[]>;
@@ -26,12 +31,13 @@ export abstract class BaseFormatter {
         return path.dirname(document.fileName);
     }
     protected getWorkspaceUri(document: vscode.TextDocument) {
-        const workspaceFolder = vscode.workspace.getWorkspaceFolder(document.uri);
+        const workspaceFolder = this.workspace.getWorkspaceFolder(document.uri);
         if (workspaceFolder) {
             return workspaceFolder.uri;
         }
-        if (Array.isArray(vscode.workspace.workspaceFolders) && vscode.workspace.workspaceFolders.length > 0) {
-            return vscode.workspace.workspaceFolders[0].uri;
+        const folders = this.workspace.workspaceFolders;
+        if (Array.isArray(folders) && folders.length > 0) {
+            return folders[0].uri;
         }
         return vscode.Uri.file(__dirname);
     }
@@ -45,26 +51,24 @@ export abstract class BaseFormatter {
         // However they don't support returning the diff of the formatted text when reading data from the input stream.
         // Yes getting text formatted that way avoids having to create a temporary file, however the diffing will have
         // to be done here in node (extension), i.e. extension cpu, i.e. les responsive solution.
-        const tmpFileCreated = document.isDirty;
-        const filePromise = tmpFileCreated ? getTempFileWithDocumentContents(document) : Promise.resolve(document.fileName);
-        const filePath = await filePromise;
-        if (token && token.isCancellationRequested) {
+        const tempFile = await this.createTempFile(document);
+        if (this.checkCancellation(document.fileName, tempFile, token)) {
             return [];
         }
 
         const executionInfo = this.helper.getExecutionInfo(this.product, args, document.uri);
-        executionInfo.args.push(filePath);
+        executionInfo.args.push(tempFile);
         const pythonToolsExecutionService = this.serviceContainer.get<IPythonToolExecutionService>(IPythonToolExecutionService);
         const promise = pythonToolsExecutionService.exec(executionInfo, { cwd, throwOnStdErr: true, token }, document.uri)
             .then(output => output.stdout)
             .then(data => {
-                if (token && token.isCancellationRequested) {
+                if (this.checkCancellation(document.fileName, tempFile, token)) {
                     return [] as TextEdit[];
                 }
                 return getTextEditsFromPatch(document.getText(), data);
             })
             .catch(error => {
-                if (token && token.isCancellationRequested) {
+                if (this.checkCancellation(document.fileName, tempFile, token)) {
                     return [] as TextEdit[];
                 }
                 // tslint:disable-next-line:no-empty
@@ -72,10 +76,7 @@ export abstract class BaseFormatter {
                 return [] as TextEdit[];
             })
             .then(edits => {
-                // Delete the temporary file created
-                if (tmpFileCreated) {
-                    fs.unlinkSync(filePath);
-                }
+                this.deleteTempFile(document.fileName, tempFile).ignoreErrors();
                 return edits;
             });
         vscode.window.setStatusBarMessage(`Formatting with ${this.Id}`, promise);
@@ -95,5 +96,26 @@ export abstract class BaseFormatter {
         }
 
         this.outputChannel.appendLine(`\n${customError}\n${error}`);
+    }
+
+    private async createTempFile(document: vscode.TextDocument): Promise<string> {
+        return document.isDirty
+            ? await getTempFileWithDocumentContents(document)
+            : document.fileName;
+    }
+
+    private deleteTempFile(originalFile: string, tempFile: string): Promise<void> {
+        if (originalFile !== tempFile) {
+            return fs.unlink(tempFile);
+        }
+        return Promise.resolve();
+    }
+
+    private checkCancellation(originalFile: string, tempFile: string, token?: vscode.CancellationToken): boolean {
+        if (token && token.isCancellationRequested) {
+            this.deleteTempFile(originalFile, tempFile).ignoreErrors();
+            return true;
+        }
+        return false;
     }
 }

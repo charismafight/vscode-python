@@ -5,8 +5,9 @@
 // tslint:disable:no-any unified-signatures
 
 import * as vscode from 'vscode';
-import { CancellationToken, Disposable, Event, FileSystemWatcher, GlobPattern, TextDocument, TextDocumentShowOptions, WorkspaceConfiguration } from 'vscode';
+import { CancellationToken, ConfigurationChangeEvent, Disposable, Event, FileSystemWatcher, GlobPattern, TextDocument, TextDocumentShowOptions, WorkspaceConfiguration, WorkspaceFolderPickOptions } from 'vscode';
 import { TextEditor, TextEditorEdit, TextEditorOptionsChangeEvent, TextEditorSelectionChangeEvent, TextEditorViewColumnChangeEvent } from 'vscode';
+import { StatusBarAlignment, StatusBarItem } from 'vscode';
 import { Uri, ViewColumn, WorkspaceFolder, WorkspaceFoldersChangeEvent } from 'vscode';
 import { Terminal, TerminalOptions } from 'vscode';
 
@@ -197,6 +198,55 @@ export interface IApplicationShell {
      * @param url Url to open.
      */
     openUrl(url: string): void;
+
+    /**
+     * Set a message to the status bar. This is a short hand for the more powerful
+     * status bar [items](#window.createStatusBarItem).
+     *
+     * @param text The message to show, supports icon substitution as in status bar [items](#StatusBarItem.text).
+     * @param hideAfterTimeout Timeout in milliseconds after which the message will be disposed.
+     * @return A disposable which hides the status bar message.
+     */
+    setStatusBarMessage(text: string, hideAfterTimeout: number): Disposable;
+
+    /**
+     * Set a message to the status bar. This is a short hand for the more powerful
+     * status bar [items](#window.createStatusBarItem).
+     *
+     * @param text The message to show, supports icon substitution as in status bar [items](#StatusBarItem.text).
+     * @param hideWhenDone Thenable on which completion (resolve or reject) the message will be disposed.
+     * @return A disposable which hides the status bar message.
+     */
+    setStatusBarMessage(text: string, hideWhenDone: Thenable<any>): Disposable;
+
+    /**
+     * Set a message to the status bar. This is a short hand for the more powerful
+     * status bar [items](#window.createStatusBarItem).
+     *
+     * *Note* that status bar messages stack and that they must be disposed when no
+     * longer used.
+     *
+     * @param text The message to show, supports icon substitution as in status bar [items](#StatusBarItem.text).
+     * @return A disposable which hides the status bar message.
+     */
+    setStatusBarMessage(text: string): Disposable;
+
+    /**
+     * Creates a status bar [item](#StatusBarItem).
+     *
+     * @param alignment The alignment of the item.
+     * @param priority The priority of the item. Higher values mean the item should be shown more to the left.
+     * @return A new status bar item.
+     */
+    createStatusBarItem(alignment?: StatusBarAlignment, priority?: number): StatusBarItem;
+    /**
+     * Shows a selection list of [workspace folders](#workspace.workspaceFolders) to pick from.
+     * Returns `undefined` if no folder is open.
+     *
+     * @param options Configures the behavior of the workspace folder list.
+     * @return A promise that resolves to the workspace folder or `undefined`.
+     */
+    showWorkspaceFolderPick(options?: WorkspaceFolderPickOptions): Thenable<WorkspaceFolder | undefined>;
 }
 
 export const ICommandManager = Symbol('ICommandManager');
@@ -263,6 +313,12 @@ export const IDocumentManager = Symbol('IDocumentManager');
 
 export interface IDocumentManager {
     /**
+     * All text documents currently known to the system.
+     *
+     * @readonly
+     */
+    readonly textDocuments: TextDocument[];
+    /**
      * The currently active editor or `undefined`. The active editor is the one
      * that currently has focus or, when none has focus, the one that has changed
      * input most recently.
@@ -301,6 +357,19 @@ export interface IDocumentManager {
      * An [event](#Event) which fires when the view column of an editor has changed.
      */
     readonly onDidChangeTextEditorViewColumn: Event<TextEditorViewColumnChangeEvent>;
+
+    /**
+     * An event that is emitted when a [text document](#TextDocument) is opened.
+     */
+    readonly onDidOpenTextDocument: Event<TextDocument>;
+    /**
+     * An event that is emitted when a [text document](#TextDocument) is disposed.
+     */
+    readonly onDidCloseTextDocument: Event<TextDocument>;
+    /**
+     * An event that is emitted when a [text document](#TextDocument) is saved to disk.
+     */
+    readonly onDidSaveTextDocument: Event<TextDocument>;
 
     /**
      * Show the given document in a text editor. A [column](#ViewColumn) can be provided
@@ -344,8 +413,6 @@ export interface IWorkspaceService {
      * ~~The folder that is open in the editor. `undefined` when no folder
      * has been opened.~~
      *
-     * @deprecated Use [`workspaceFolders`](#workspace.workspaceFolders) instead.
-     *
      * @readonly
      */
     readonly rootPath: string | undefined;
@@ -366,7 +433,13 @@ export interface IWorkspaceService {
     /**
      * An event that is emitted when the [configuration](#WorkspaceConfiguration) changed.
      */
-    readonly onDidChangeConfiguration: Event<void>;
+    readonly onDidChangeConfiguration: Event<ConfigurationChangeEvent>;
+    /**
+     * Whether a workspace folder exists
+     * @type {boolean}
+     * @memberof IWorkspaceService
+     */
+    readonly hasWorkspaceFolders: boolean;
 
     /**
      * Returns the [workspace folder](#WorkspaceFolder) that contains a given uri.
@@ -456,4 +529,20 @@ export interface ITerminalManager {
      * @return A new Terminal.
      */
     createTerminal(options: TerminalOptions): Terminal;
+}
+
+export const IDebugService = Symbol('IDebugManager');
+
+export interface IDebugService {
+    /**
+     * Start debugging by using either a named launch or named compound configuration,
+     * or by directly passing a [DebugConfiguration](#DebugConfiguration).
+     * The named configurations are looked up in '.vscode/launch.json' found in the given folder.
+     * Before debugging starts, all unsaved files are saved and the launch configurations are brought up-to-date.
+     * Folder specific variables used in the configuration (e.g. '${workspaceFolder}') are resolved against the given folder.
+     * @param folder The [workspace folder](#WorkspaceFolder) for looking up named configurations and resolving variables or `undefined` for a non-folder setup.
+     * @param nameOrConfiguration Either the name of a debug or compound configuration or a [DebugConfiguration](#DebugConfiguration) object.
+     * @return A thenable that resolves when debugging could be successfully started.
+     */
+    startDebugging(folder: WorkspaceFolder | undefined, nameOrConfiguration: string | vscode.DebugConfiguration): Thenable<boolean>;
 }

@@ -4,6 +4,7 @@
 import * as vscode from 'vscode';
 import { ExecutionInfo, Product } from '../common/types';
 import { IServiceContainer } from '../ioc/types';
+import { LinterTrigger } from '../telemetry/types';
 
 export interface IErrorHandler {
     handleError(error: Error, resource: vscode.Uri, execInfo: ExecutionInfo): Promise<boolean>;
@@ -17,6 +18,7 @@ export interface ILinterInfo {
     readonly pathSettingName: string;
     readonly argsSettingName: string;
     readonly enabledSettingName: string;
+    readonly configFileNames: string[];
     enableAsync(flag: boolean, resource?: vscode.Uri): Promise<void>;
     isEnabled(resource?: vscode.Uri): boolean;
     pathName(resource?: vscode.Uri): string;
@@ -36,7 +38,6 @@ export interface ILinterManager {
     getActiveLinters(resource?: vscode.Uri): ILinterInfo[];
     isLintingEnabled(resource?: vscode.Uri): boolean;
     enableLintingAsync(enable: boolean, resource?: vscode.Uri): Promise<void>;
-    disableSessionLinting(): void;
     setActiveLintersAsync(products: Product[], resource?: vscode.Uri): Promise<void>;
     createLinter(product: Product, outputChannel: vscode.OutputChannel, serviceContainer: IServiceContainer, resource?: vscode.Uri): ILinter;
 }
@@ -55,4 +56,14 @@ export enum LintMessageSeverity {
     Error,
     Warning,
     Information
+}
+
+export const ILintingEngine = Symbol('ILintingEngine');
+export interface ILintingEngine {
+    readonly diagnostics: vscode.DiagnosticCollection;
+    lintOpenPythonFiles(): Promise<vscode.DiagnosticCollection>;
+    lintDocument(document: vscode.TextDocument, trigger: LinterTrigger): Promise<void>;
+    // tslint:disable-next-line:no-any
+    linkJupiterExtension(jupiter: vscode.Extension<any> | undefined): Promise<void>;
+    clearDiagnostics(document: vscode.TextDocument): void;
 }

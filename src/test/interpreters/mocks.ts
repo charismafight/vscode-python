@@ -1,7 +1,7 @@
 import { injectable } from 'inversify';
 import { Architecture, IRegistry, RegistryHive } from '../../client/common/platform/types';
-import { IInterpreterVersionService, InterpreterType } from '../../client/interpreter/contracts';
-import { IVirtualEnvironmentIdentifier } from '../../client/interpreter/virtualEnvs/types';
+import { IPersistentState } from '../../client/common/types';
+import { IInterpreterVersionService } from '../../client/interpreter/contracts';
 
 @injectable()
 export class MockRegistry implements IRegistry {
@@ -36,15 +36,6 @@ export class MockRegistry implements IRegistry {
     }
 }
 
-@injectable()
-export class MockVirtualEnv implements IVirtualEnvironmentIdentifier {
-    constructor(private isDetected: boolean, public name: string, public type: InterpreterType.VirtualEnv | InterpreterType.VEnv = InterpreterType.VirtualEnv) {
-    }
-    public async detect(pythonPath: string): Promise<boolean> {
-        return Promise.resolve(this.isDetected);
-    }
-}
-
 // tslint:disable-next-line:max-classes-per-file
 @injectable()
 export class MockInterpreterVersionProvider implements IInterpreterVersionService {
@@ -59,4 +50,17 @@ export class MockInterpreterVersionProvider implements IInterpreterVersionServic
     }
     // tslint:disable-next-line:no-empty
     public dispose() { }
+}
+
+// tslint:disable-next-line:no-any max-classes-per-file
+export class MockState implements IPersistentState<any> {
+    // tslint:disable-next-line:no-any
+    constructor(public data: any) { }
+    // tslint:disable-next-line:no-any
+    get value(): any {
+        return this.data;
+    }
+    public async updateValue(data): Promise<void> {
+        this.data = data;
+    }
 }

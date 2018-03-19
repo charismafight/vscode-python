@@ -5,16 +5,17 @@ import { IApplicationShell } from '../../client/common/application/types';
 import { ConfigurationService } from '../../client/common/configuration/service';
 import { EnumEx } from '../../client/common/enumUtils';
 import { createDeferred } from '../../client/common/helpers';
+import { InstallationChannelManager } from '../../client/common/installer/channelManager';
 import { ProductInstaller } from '../../client/common/installer/productInstaller';
-import { IModuleInstaller } from '../../client/common/installer/types';
+import { IInstallationChannelManager, IModuleInstaller } from '../../client/common/installer/types';
 import { Logger } from '../../client/common/logger';
 import { PersistentStateFactory } from '../../client/common/persistentState';
 import { PathUtils } from '../../client/common/platform/pathUtils';
 import { CurrentProcess } from '../../client/common/process/currentProcess';
 import { IProcessService } from '../../client/common/process/types';
 import { IConfigurationService, ICurrentProcess, IInstaller, ILogger, IPathUtils, IPersistentStateFactory, IsWindows, ModuleNamePurpose, Product } from '../../client/common/types';
-import { updateSetting } from '../common';
 import { rootWorkspaceUri } from '../common';
+import { updateSetting } from '../common';
 import { MockModuleInstaller } from '../mocks/moduleInstaller';
 import { MockProcessService } from '../mocks/proc';
 import { UnitTestIocContainer } from '../unittests/serviceRegistry';
@@ -37,12 +38,13 @@ suite('Installer', () => {
     });
     teardown(async () => {
         ioc.dispose();
-        closeActiveWindows();
+        await closeActiveWindows();
     });
 
     function initializeDI() {
         ioc = new UnitTestIocContainer();
         ioc.registerUnitTestTypes();
+        ioc.registerFileSystemTypes();
         ioc.registerVariableTypes();
         ioc.registerLinterTypes();
         ioc.registerFormatterTypes();
@@ -52,6 +54,7 @@ suite('Installer', () => {
         ioc.serviceManager.addSingleton<IInstaller>(IInstaller, ProductInstaller);
         ioc.serviceManager.addSingleton<IPathUtils>(IPathUtils, PathUtils);
         ioc.serviceManager.addSingleton<ICurrentProcess>(ICurrentProcess, CurrentProcess);
+        ioc.serviceManager.addSingleton<IInstallationChannelManager>(IInstallationChannelManager, InstallationChannelManager);
 
         ioc.serviceManager.addSingletonInstance<IApplicationShell>(IApplicationShell, TypeMoq.Mock.ofType<IApplicationShell>().object);
         ioc.serviceManager.addSingleton<IConfigurationService>(IConfigurationService, ConfigurationService);
@@ -70,9 +73,6 @@ suite('Installer', () => {
         processService.onExec((file, args, options, callback) => {
             const moduleName = installer.translateProductToModuleName(product, ModuleNamePurpose.run);
             if (args.length > 1 && args[0] === '-c' && args[1] === `import ${moduleName}`) {
-                checkInstalledDef.resolve(true);
-            }
-            if (product === Product.prospector && args.length > 0 && args[0] === '--version') {
                 checkInstalledDef.resolve(true);
             }
             callback({ stdout: '' });

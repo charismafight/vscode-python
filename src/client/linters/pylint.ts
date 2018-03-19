@@ -2,6 +2,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+import * as os from 'os';
 import * as path from 'path';
 import { OutputChannel } from 'vscode';
 import { CancellationToken, TextDocument } from 'vscode';
@@ -10,6 +11,9 @@ import { Product } from '../common/types';
 import { IServiceContainer } from '../ioc/types';
 import { BaseLinter } from './baseLinter';
 import { ILintMessage } from './types';
+
+const pylintrc = 'pylintrc';
+const dotPylintrc = '.pylintrc';
 
 export class Pylint extends BaseLinter {
     private fileSystem: IFileSystem;
@@ -25,15 +29,41 @@ export class Pylint extends BaseLinter {
         let minArgs: string[] = [];
         // Only use minimal checkers if
         //  a) there are no custom arguments and
-        //  b) there is no pylintrc file
+        //  b) there is no pylintrc file next to the file or at the workspace root
         const uri = document.uri;
+        const workspaceRoot = this.getWorkspaceRootPath(document);
         const settings = this.configService.getSettings(uri);
         if (settings.linting.pylintUseMinimalCheckers
             && this.info.linterArgs(uri).length === 0
-            && !await Pylint.hasConfigurationFile(this.fileSystem, uri.fsPath, this.platformService)) {
+            // Check pylintrc next to the file or above up to and including the workspace root
+            && !await Pylint.hasConfigrationFileInWorkspace(this.fileSystem, path.dirname(uri.fsPath), workspaceRoot)
+            // Check for pylintrc at the root and above
+            && !await Pylint.hasConfigurationFile(this.fileSystem, this.getWorkspaceRootPath(document), this.platformService)) {
+            // Disable all checkers up front and then selectively add back in:
+            // - All F checkers
+            // - Select W checkers
+            // - All E checkers _manually_
+            //   (see https://github.com/Microsoft/vscode-python/issues/722 for
+            //    why; see
+            //    https://gist.github.com/brettcannon/eff7f38a60af48d39814cbb2f33b3d1d
+            //    for a script to regenerate the list of E checkers)
             minArgs = [
                 '--disable=all',
-                '--enable=F,E,unreachable,duplicate-key,unnecessary-semicolon,global-variable-not-assigned,unused-variable,unused-wildcard-import,binary-op-exception,bad-format-string,anomalous-backslash-in-string,bad-open-mode'
+                '--enable=F'
+                + ',unreachable,duplicate-key,unnecessary-semicolon'
+                + ',global-variable-not-assigned,unused-variable'
+                + ',unused-wildcard-import,binary-op-exception'
+                + ',bad-format-string,anomalous-backslash-in-string'
+                + ',bad-open-mode'
+                + ',E0001,E0011,E0012,E0100,E0101,E0102,E0103,E0104,E0105,E0107'
+                + ',E0108,E0110,E0111,E0112,E0113,E0114,E0115,E0116,E0117,E0118'
+                + ',E0202,E0203,E0211,E0213,E0236,E0237,E0238,E0239,E0240,E0241'
+                + ',E0301,E0302,E0303,E0401,E0402,E0601,E0602,E0603,E0604,E0611'
+                + ',E0632,E0633,E0701,E0702,E0703,E0704,E0710,E0711,E0712,E1003'
+                + ',E1101,E1102,E1111,E1120,E1121,E1123,E1124,E1125,E1126,E1127'
+                + ',E1128,E1129,E1130,E1131,E1132,E1133,E1134,E1135,E1136,E1137'
+                + ',E1138,E1139,E1200,E1201,E1205,E1206,E1300,E1301,E1302,E1303'
+                + ',E1304,E1305,E1306,E1310,E1700,E1701'
             ];
         }
         const args = [
@@ -51,7 +81,7 @@ export class Pylint extends BaseLinter {
     }
 
     // tslint:disable-next-line:member-ordering
-    public static async hasConfigurationFile(fs: IFileSystem, filePath: string, platformService: IPlatformService): Promise<boolean> {
+    public static async hasConfigurationFile(fs: IFileSystem, folder: string, platformService: IPlatformService): Promise<boolean> {
         // https://pylint.readthedocs.io/en/latest/user_guide/run.html
         // https://github.com/PyCQA/pylint/blob/975e08148c0faa79958b459303c47be1a2e1500a/pylint/config.py
         // 1. pylintrc in the current working directory
@@ -69,15 +99,12 @@ export class Pylint extends BaseLinter {
             return true;
         }
 
-        let dir = path.dirname(filePath);
-        const pylintrc = 'pylintrc';
-        const dotPylintrc = '.pylintrc';
-        if (await fs.fileExistsAsync(path.join(dir, pylintrc)) || await fs.fileExistsAsync(path.join(dir, dotPylintrc))) {
+        if (await fs.fileExistsAsync(path.join(folder, pylintrc)) || await fs.fileExistsAsync(path.join(folder, dotPylintrc))) {
             return true;
         }
 
-        let current = dir;
-        let above = path.dirname(dir);
+        let current = folder;
+        let above = path.dirname(folder);
         do {
             if (!await fs.fileExistsAsync(path.join(current, '__init__.py'))) {
                 break;
@@ -87,13 +114,13 @@ export class Pylint extends BaseLinter {
             }
             current = above;
             above = path.dirname(above);
-        } while (current !== above);
+        } while (!fs.arePathsSame(current, above));
 
-        dir = path.resolve('~');
-        if (await fs.fileExistsAsync(path.join(dir, dotPylintrc))) {
+        const home = os.homedir();
+        if (await fs.fileExistsAsync(path.join(home, dotPylintrc))) {
             return true;
         }
-        if (await fs.fileExistsAsync(path.join(dir, '.config', pylintrc))) {
+        if (await fs.fileExistsAsync(path.join(home, '.config', pylintrc))) {
             return true;
         }
 
@@ -102,6 +129,21 @@ export class Pylint extends BaseLinter {
                 return true;
             }
         }
+        return false;
+    }
+
+    // tslint:disable-next-line:member-ordering
+    public static async hasConfigrationFileInWorkspace(fs: IFileSystem, folder: string, root: string): Promise<boolean> {
+        // Search up from file location to the workspace root
+        let current = folder;
+        let above = path.dirname(current);
+        do {
+            if (await fs.fileExistsAsync(path.join(current, pylintrc)) || await fs.fileExistsAsync(path.join(current, dotPylintrc))) {
+                return true;
+            }
+            current = above;
+            above = path.dirname(above);
+        } while (!fs.arePathsSame(current, root) && !fs.arePathsSame(current, above));
         return false;
     }
 }

@@ -1,6 +1,8 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+// tslint:disable:no-any
+
 import { spawn } from 'child_process';
 import { inject, injectable } from 'inversify';
 import { Observable } from 'rxjs/Observable';
@@ -11,7 +13,7 @@ import { ExecutionResult, IBufferDecoder, IProcessService, ObservableExecutionRe
 
 @injectable()
 export class ProcessService implements IProcessService {
-    constructor( @inject(IBufferDecoder) private decoder: IBufferDecoder) { }
+    constructor(@inject(IBufferDecoder) private decoder: IBufferDecoder) { }
     public execObservable(file: string, args: string[], options: SpawnOptions = {}): ObservableExecutionResult<string> {
         const encoding = options.encoding = typeof options.encoding === 'string' && options.encoding.length > 0 ? options.encoding : DEFAULT_ENCODING;
         delete options.encoding;
@@ -33,8 +35,8 @@ export class ProcessService implements IProcessService {
             const disposables: Disposable[] = [];
 
             const on = (ee: NodeJS.EventEmitter, name: string, fn: Function) => {
-                ee.on(name, fn);
-                disposables.push({ dispose: () => ee.removeListener(name, fn) });
+                ee.on(name, fn as any);
+                disposables.push({ dispose: () => ee.removeListener(name, fn as any) });
             };
 
             if (options.token) {
@@ -72,7 +74,7 @@ export class ProcessService implements IProcessService {
 
         return { proc, out: output };
     }
-    public async exec(file: string, args: string[], options: SpawnOptions = {}): Promise<ExecutionResult<string>> {
+    public exec(file: string, args: string[], options: SpawnOptions = {}): Promise<ExecutionResult<string>> {
         const encoding = options.encoding = typeof options.encoding === 'string' && options.encoding.length > 0 ? options.encoding : DEFAULT_ENCODING;
         delete options.encoding;
         const spawnOptions = { ...options };
@@ -90,8 +92,8 @@ export class ProcessService implements IProcessService {
         const disposables: Disposable[] = [];
 
         const on = (ee: NodeJS.EventEmitter, name: string, fn: Function) => {
-            ee.on(name, fn);
-            disposables.push({ dispose: () => ee.removeListener(name, fn) });
+            ee.on(name, fn as any);
+            disposables.push({ dispose: () => ee.removeListener(name, fn as any) });
         };
 
         if (options.token) {

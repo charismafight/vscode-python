@@ -34,7 +34,7 @@ export class TerminalCodeExecutionProvider implements ICodeExecutionService {
         const command = this.platformService.isWindows ? pythonSettings.pythonPath.replace(/\\/g, '/') : pythonSettings.pythonPath;
         const launchArgs = pythonSettings.terminal.launchArgs;
 
-        await this.getTerminalService(file).sendCommand(command, launchArgs.concat(file.fsPath.toCommandArgument()));
+        await this.getTerminalService(file).sendCommand(command, launchArgs.concat(file.fsPath.fileToCommandArgument()));
     }
 
     public async execute(code: string, resource?: Uri): Promise<void> {
@@ -47,7 +47,7 @@ export class TerminalCodeExecutionProvider implements ICodeExecutionService {
     }
     public async initializeRepl(resource?: Uri) {
         if (this.replActive && await this.replActive!) {
-            this._terminalService!.show();
+            await this._terminalService!.show();
             return;
         }
         this.replActive = new Promise<boolean>(async resolve => {
@@ -83,7 +83,7 @@ export class TerminalCodeExecutionProvider implements ICodeExecutionService {
         const fileDirPath = path.dirname(file.fsPath);
         const wkspace = this.workspace.getWorkspaceFolder(file);
         if (wkspace && fileDirPath !== wkspace.uri.fsPath && fileDirPath.length > 0) {
-            await this.getTerminalService(file).sendText(`cd ${fileDirPath.toCommandArgument()}`);
+            await this.getTerminalService(file).sendText(`cd ${fileDirPath.fileToCommandArgument()}`);
         }
     }
 }

@@ -5,6 +5,7 @@ import { EventEmitter } from 'events';
 import * as path from 'path';
 import * as vscode from 'vscode';
 import { ConfigurationTarget, Uri } from 'vscode';
+import { isTestExecution } from './constants';
 import {
     IAutoCompeteSettings,
     IFormattingSettings,
@@ -22,19 +23,16 @@ const untildify = require('untildify');
 
 export const IS_WINDOWS = /^win/.test(process.platform);
 
-export function isTestExecution(): boolean {
-    // tslint:disable-next-line:interface-name no-string-literal
-    return process.env['VSC_PYTHON_CI_TEST'] === '1';
-}
-
 // tslint:disable-next-line:completed-docs
 export class PythonSettings extends EventEmitter implements IPythonSettings {
     private static pythonSettings: Map<string, PythonSettings> = new Map<string, PythonSettings>();
 
     public jediPath: string;
+    public jediMemoryLimit: number;
     public envFile: string;
     public disablePromptForFeatures: string[];
     public venvPath: string;
+    public venvFolders: string[];
     public devOptions: string[];
     public linting: ILintingSettings;
     public formatting: IFormattingSettings;
@@ -55,6 +53,10 @@ export class PythonSettings extends EventEmitter implements IPythonSettings {
         this.workspaceRoot = workspaceFolder ? workspaceFolder : vscode.Uri.file(__dirname);
         this.disposables.push(vscode.workspace.onDidChangeConfiguration(() => {
             this.initializeSettings();
+
+            // If workspace config changes, then we could have a cascading effect of on change events.
+            // Let's defer the change notification.
+            setTimeout(() => this.emit('change'), 1);
         }));
 
         this.initializeSettings();
@@ -109,6 +111,7 @@ export class PythonSettings extends EventEmitter implements IPythonSettings {
         this.pythonPath = getAbsolutePath(this.pythonPath, workspaceRoot);
         // tslint:disable-next-line:no-backbone-get-set-outside-model no-non-null-assertion
         this.venvPath = systemVariables.resolveAny(pythonSettings.get<string>('venvPath'))!;
+        this.venvFolders = systemVariables.resolveAny(pythonSettings.get<string[]>('venvFolders'))!;
         // tslint:disable-next-line:no-backbone-get-set-outside-model no-non-null-assertion
         this.jediPath = systemVariables.resolveAny(pythonSettings.get<string>('jediPath'))!;
         if (typeof this.jediPath === 'string' && this.jediPath.length > 0) {
@@ -116,6 +119,8 @@ export class PythonSettings extends EventEmitter implements IPythonSettings {
         } else {
             this.jediPath = '';
         }
+        this.jediMemoryLimit = pythonSettings.get<number>('jediMemoryLimit')!;
+
         // tslint:disable-next-line:no-backbone-get-set-outside-model no-non-null-assertion
         this.envFile = systemVariables.resolveAny(pythonSettings.get<string>('envFile'))!;
         // tslint:disable-next-line:no-any
@@ -169,9 +174,12 @@ export class PythonSettings extends EventEmitter implements IPythonSettings {
                 W: vscode.DiagnosticSeverity.Warning
             },
             flake8CategorySeverity: {
-                F: vscode.DiagnosticSeverity.Error,
                 E: vscode.DiagnosticSeverity.Error,
-                W: vscode.DiagnosticSeverity.Warning
+                W: vscode.DiagnosticSeverity.Warning,
+                // Per http://flake8.pycqa.org/en/latest/glossary.html#term-error-code
+                // 'F' does not mean 'fatal as in PyLint but rather 'pyflakes' such as
+                // unused imports, variables, etc.
+                F: vscode.DiagnosticSeverity.Warning
             },
             mypyCategorySeverity: {
                 error: vscode.DiagnosticSeverity.Error,
@@ -282,15 +290,12 @@ export class PythonSettings extends EventEmitter implements IPythonSettings {
                 this.terminal = {} as ITerminalSettings;
             }
         }
-        // Support for travis
+        // Support for travis.
         this.terminal = this.terminal ? this.terminal : {
             executeInFileDir: true,
-            launchArgs: []
+            launchArgs: [],
+            activateEnvironment: true
         };
-
-        // If workspace config changes, then we could have a cascading effect of on change events.
-        // Let's defer the change notification.
-        setTimeout(() => this.emit('change'), 1);
     }
 
     public get pythonPath(): string {

@@ -1,4 +1,4 @@
-import { ConfigurationTarget, Disposable, Uri } from 'vscode';
+import { CodeLensProvider, ConfigurationTarget, Disposable, Event, TextDocument, Uri } from 'vscode';
 import { Architecture } from '../common/platform/types';
 
 export const INTERPRETER_LOCATOR_SERVICE = 'IInterpreterLocatorService';
@@ -7,7 +7,9 @@ export const CONDA_ENV_FILE_SERVICE = 'CondaEnvFileService';
 export const CONDA_ENV_SERVICE = 'CondaEnvService';
 export const CURRENT_PATH_SERVICE = 'CurrentPathService';
 export const KNOWN_PATH_SERVICE = 'KnownPathsService';
-export const VIRTUAL_ENV_SERVICE = 'VirtualEnvService';
+export const GLOBAL_VIRTUAL_ENV_SERVICE = 'VirtualEnvService';
+export const WORKSPACE_VIRTUAL_ENV_SERVICE = 'WorkspaceVirtualEnvService';
+export const PIPENV_SERVICE = 'PipEnvService';
 
 export const IInterpreterVersionService = Symbol('IInterpreterVersionService');
 export interface IInterpreterVersionService {
@@ -16,8 +18,11 @@ export interface IInterpreterVersionService {
 }
 
 export const IKnownSearchPathsForInterpreters = Symbol('IKnownSearchPathsForInterpreters');
-export const IKnownSearchPathsForVirtualEnvironments = Symbol('IKnownSearchPathsForVirtualEnvironments');
 
+export const IVirtualEnvironmentsSearchPathProvider = Symbol('IVirtualEnvironmentsSearchPathProvider');
+export interface IVirtualEnvironmentsSearchPathProvider {
+    getSearchPaths(resource?: Uri): string[];
+}
 export const IInterpreterLocatorService = Symbol('IInterpreterLocatorService');
 
 export interface IInterpreterLocatorService extends Disposable {
@@ -40,15 +45,16 @@ export interface ICondaService {
     isCondaAvailable(): Promise<boolean>;
     getCondaVersion(): Promise<string | undefined>;
     getCondaInfo(): Promise<CondaInfo | undefined>;
-    getCondaEnvironments(): Promise<({ name: string, path: string }[]) | undefined>;
+    getCondaEnvironments(ignoreCache: boolean): Promise<({ name: string, path: string }[]) | undefined>;
     getInterpreterPath(condaEnvironmentPath: string): string;
+    isCondaEnvironment(interpreterPath: string): Promise<boolean>;
+    getCondaEnvironment(interpreterPath: string): Promise<{ name: string, path: string } | undefined>;
 }
 
 export enum InterpreterType {
     Unknown = 1,
     Conda = 2,
-    VirtualEnv = 4,
-    VEnv = 8
+    VirtualEnv = 4
 }
 
 export type PythonInterpreter = {
@@ -60,19 +66,36 @@ export type PythonInterpreter = {
     type: InterpreterType;
     envName?: string;
     envPath?: string;
+    cachedEntry?: boolean;
+    realPath?: string;
 };
 
 export type WorkspacePythonPath = {
     folderUri: Uri;
-    pytonPath?: string;
     configTarget: ConfigurationTarget.Workspace | ConfigurationTarget.WorkspaceFolder;
 };
 
 export const IInterpreterService = Symbol('IInterpreterService');
-
 export interface IInterpreterService {
+    onDidChangeInterpreter: Event<void>;
     getInterpreters(resource?: Uri): Promise<PythonInterpreter[]>;
     autoSetInterpreter(): Promise<void>;
-    getActiveInterpreter(resource?: Uri): Promise<PythonInterpreter>;
+    getActiveInterpreter(resource?: Uri): Promise<PythonInterpreter | undefined>;
     refresh(): Promise<void>;
+    initialize(): void;
+}
+
+export const IInterpreterDisplay = Symbol('IInterpreterDisplay');
+export interface IInterpreterDisplay {
+    refresh(resource?: Uri): Promise<void>;
+}
+
+export const IShebangCodeLensProvider = Symbol('IShebangCodeLensProvider');
+export interface IShebangCodeLensProvider extends CodeLensProvider {
+    detectShebang(document: TextDocument): Promise<string | undefined>;
+}
+
+export const IInterpreterHelper = Symbol('IInterpreterHelper');
+export interface IInterpreterHelper {
+    getActiveWorkspaceUri(): WorkspacePythonPath | undefined;
 }
